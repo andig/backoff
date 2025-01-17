@@ -119,7 +119,7 @@ func Retry[T any](ctx context.Context, operation Operation[T], opts ...RetryOpti
 		}
 
 		// Stop retrying if maximum elapsed time exceeded.
-		if time.Since(startedAt)+next > args.MaxElapsedTime {
+		if args.MaxElapsedTime > 0 && time.Since(startedAt)+next > args.MaxElapsedTime {
 			return res, err
 		}
 
