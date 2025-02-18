@@ -47,7 +47,7 @@ func WithNotify(n Notify) RetryOption {
 	}
 }
 
-// WithMaxTries limits the number of retry attempts.
+// WithMaxTries limits the number of all attempts.
 func WithMaxTries(n uint) RetryOption {
 	return func(args *retryOptions) {
 		args.MaxTries = n
