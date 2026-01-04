@@ -224,3 +224,18 @@ func TestPermanent(t *testing.T) {
 		t.Errorf("got %v, want nil", err)
 	}
 }
+
+// PermanentError bubbles up when WithMaxTries(1)
+// https://github.com/cenkalti/backoff/issues/177
+func TestIssue177(t *testing.T) {
+	dummyErr := errors.New("dummy")
+	operation := func() (int, error) {
+		return 0, Permanent(dummyErr)
+	}
+	for i := range uint(3) {
+		_, err := Retry(context.TODO(), operation, WithMaxTries(i))
+		if err != dummyErr {
+			t.Errorf("unexpected error: %s", err.Error())
+		}
+	}
+}
