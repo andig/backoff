@@ -23,12 +23,6 @@ func ExampleRetry() {
 		}
 		defer resp.Body.Close()
 
-		// In case on non-retriable error, return Permanent error to stop retrying.
-		// For this HTTP example, client errors are non-retriable.
-		if resp.StatusCode == 400 {
-			return "", backoff.Permanent(errors.New("bad request"))
-		}
-
 		// If we are being rate limited, return a RetryAfter to specify how long to wait.
 		// This will also reset the backoff policy.
 		if resp.StatusCode == 429 {
@@ -36,6 +30,12 @@ func ExampleRetry() {
 			if err == nil {
 				return "", backoff.RetryAfter(int(seconds))
 			}
+		}
+
+		// In case of non-retriable error, return Permanent error to stop retrying.
+		// For this HTTP example, client errors are non-retriable.
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return "", backoff.Permanent(errors.New("bad request"))
 		}
 
 		// Return successful response.
@@ -48,7 +48,7 @@ func ExampleRetry() {
 		return
 	}
 
-	// Operation is successful.
+	// Operation is successful after retries.
 
 	fmt.Println(result)
 	// Output: hello
@@ -83,7 +83,7 @@ func ExampleTicker() {
 		return
 	}
 
-	// Operation is successful.
+	// Operation is successful after retries.
 
 	fmt.Println(result)
 	// Output: hello
