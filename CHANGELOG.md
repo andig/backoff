@@ -5,14 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [6.0.0] - 2026-02-21
+## [6.0.0] - 2026-06-16
+
+### Added
+
+- `RetryError`, returned by `Retry` on every failure, exposing the last operation error (`LastErr`) and the reason it stopped (`Cause`). (#181)
+- `ErrPermanent`, `ErrExhausted`, and `ErrMaxElapsedTime` cause sentinels, plus `AsRetryError` to extract a `*RetryError` from an error chain.
 
 ### Changed
 
-- `Retry` now returns `errors.Join(context.Cause(ctx), lastErr)` when the context is cancelled, instead of returning only the context error. This ensures the last operation error is always available to the caller.
-- `Retry` now returns `errors.Join(context.DeadlineExceeded, lastErr)` when `WithMaxElapsedTime` is exceeded, instead of returning only the operation error. This makes timeout behaviour consistent regardless of whether the deadline comes from the context or `WithMaxElapsedTime`. (#181)
+- `Retry` now returns a `*RetryError` on any failure instead of the bare context or operation error. Inspect it with `errors.Is`/`errors.As`; the last operation error is always preserved.
+- `WithMaxElapsedTime` now reports `ErrMaxElapsedTime` instead of `context.DeadlineExceeded`.
 
-See [`ExampleRetry_outcomes`](example_test.go) for how to inspect the different error outcomes.
+### Removed
+
+- The `PermanentError` type. Use `Permanent(err)` (unchanged) and detect it with `errors.Is(err, ErrPermanent)`.
+
+See [`ExampleRetry_outcomes`](example_test.go) for how to inspect error outcomes.
 
 ## [5.0.0] - 2024-12-19
 

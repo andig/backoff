@@ -78,18 +78,26 @@ func ExampleRetry_outcomes() {
 		// Operation succeeded.
 		fmt.Println(result)
 
-	case errors.Is(err, context.Canceled):
-		// Context was cancelled by the caller.
-		fmt.Println("cancelled:", err)
+	case errors.Is(err, backoff.ErrPermanent):
+		// The operation returned a Permanent (non-retriable) error.
+		fmt.Println("permanent:", err)
 
-	case errors.Is(err, context.DeadlineExceeded):
-		// Either the context deadline or WithMaxElapsedTime was reached.
-		// err contains both the timeout signal and the last operation error.
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		// The caller's context was cancelled or its deadline expired.
+		fmt.Println("context done:", err)
+
+	case errors.Is(err, backoff.ErrMaxElapsedTime):
+		// The WithMaxElapsedTime budget was exhausted.
 		fmt.Println("timed out:", err)
 
-	default:
-		// Retries exhausted (MaxTries or backoff stopped) or Permanent error.
+	case errors.Is(err, backoff.ErrExhausted):
+		// WithMaxTries was reached or the backoff policy stopped.
 		fmt.Println("retries exhausted:", err)
+	}
+
+	// The last operation error is always available, whatever the cause:
+	if re := backoff.AsRetryError(err); re != nil {
+		fmt.Println("last error:", re.LastErr)
 	}
 }
 

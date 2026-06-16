@@ -157,11 +157,55 @@ func TestRetryMaxElapsedTimeErrorIncludesOperationError(t *testing.T) {
 		WithMaxElapsedTime(time.Millisecond),
 		withTimer(&testTimer{}),
 	)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("DeadlineExceeded not in result: %v", err)
+	if !errors.Is(err, ErrMaxElapsedTime) {
+		t.Errorf("ErrMaxElapsedTime not in result: %v", err)
 	}
 	if !errors.Is(err, opErr) {
 		t.Errorf("operation error not in result: %v", err)
+	}
+}
+
+func TestRetryError(t *testing.T) {
+	opErr := errors.New("operation error")
+
+	// MaxTries reached: Cause is ErrExhausted, LastErr is the operation error.
+	_, err := Retry(
+		context.Background(),
+		func() (bool, error) { return false, opErr },
+		WithMaxTries(1),
+		withTimer(&testTimer{}),
+	)
+	if !errors.Is(err, ErrExhausted) {
+		t.Errorf("ErrExhausted not in result: %v", err)
+	}
+	if !errors.Is(err, opErr) {
+		t.Errorf("operation error not in result: %v", err)
+	}
+
+	// errors.As exposes the structured fields.
+	var re *RetryError
+	if !errors.As(err, &re) {
+		t.Fatalf("result is not a *RetryError: %v", err)
+	}
+	if re.LastErr != opErr {
+		t.Errorf("LastErr = %v, want %v", re.LastErr, opErr)
+	}
+	if re.Cause != ErrExhausted {
+		t.Errorf("Cause = %v, want %v", re.Cause, ErrExhausted)
+	}
+
+	// Backoff policy returning Stop also reports ErrExhausted.
+	_, err = Retry(
+		context.Background(),
+		func() (bool, error) { return false, opErr },
+		WithBackOff(&StopBackOff{}),
+		withTimer(&testTimer{}),
+	)
+	if !errors.Is(err, ErrExhausted) {
+		t.Errorf("ErrExhausted not in result on Stop: %v", err)
+	}
+	if !errors.Is(err, opErr) {
+		t.Errorf("operation error not in result on Stop: %v", err)
 	}
 }
 
@@ -242,34 +286,63 @@ func TestRetryPermanent(t *testing.T) {
 func TestPermanent(t *testing.T) {
 	want := errors.New("foo")
 	other := errors.New("bar")
-	var err error = Permanent(want)
+	err := Permanent(want)
 
-	got := errors.Unwrap(err)
-	if got != want {
+	if got := errors.Unwrap(err); got != want {
 		t.Errorf("got %v, want %v", got, want)
 	}
-
-	if is := errors.Is(err, want); !is {
+	if !errors.Is(err, want) {
 		t.Errorf("err: %v is not %v", err, want)
 	}
-
-	if is := errors.Is(err, other); is {
+	if errors.Is(err, other) {
 		t.Errorf("err: %v is %v", err, other)
 	}
-
-	wrapped := fmt.Errorf("wrapped: %w", err)
-	var permanent *PermanentError
-	if !errors.As(wrapped, &permanent) {
-		t.Errorf("errors.As(%v, %v)", wrapped, permanent)
+	if !errors.Is(err, ErrPermanent) {
+		t.Errorf("err: %v is not ErrPermanent", err)
 	}
 
-	err = Permanent(nil)
-	if err != nil {
-		t.Errorf("got %v, want nil", err)
+	// A Permanent error stays detectable through wrapping.
+	wrapped := fmt.Errorf("wrapped: %w", err)
+	if !errors.Is(wrapped, ErrPermanent) {
+		t.Errorf("wrapped: %v is not ErrPermanent", wrapped)
+	}
+	if !errors.Is(wrapped, want) {
+		t.Errorf("wrapped: %v is not %v", wrapped, want)
+	}
+
+	if Permanent(nil) != nil {
+		t.Errorf("Permanent(nil) should be nil")
 	}
 }
 
-// PermanentError bubbles up when WithMaxTries(1)
+func TestRetryPermanentError(t *testing.T) {
+	opErr := errors.New("operation error")
+
+	_, err := Retry(
+		context.Background(),
+		func() (bool, error) { return false, Permanent(opErr) },
+		withTimer(&testTimer{}),
+	)
+	if !errors.Is(err, ErrPermanent) {
+		t.Errorf("ErrPermanent not in result: %v", err)
+	}
+	if !errors.Is(err, opErr) {
+		t.Errorf("operation error not in result: %v", err)
+	}
+
+	re := AsRetryError(err)
+	if re == nil {
+		t.Fatalf("result is not a *RetryError: %v", err)
+	}
+	if re.Cause != ErrPermanent {
+		t.Errorf("Cause = %v, want ErrPermanent", re.Cause)
+	}
+	if re.LastErr != opErr {
+		t.Errorf("LastErr = %v, want %v", re.LastErr, opErr)
+	}
+}
+
+// Permanent error bubbles up when WithMaxTries(1)
 // https://github.com/cenkalti/backoff/issues/177
 func TestIssue177(t *testing.T) {
 	dummyErr := errors.New("dummy")
@@ -278,8 +351,11 @@ func TestIssue177(t *testing.T) {
 	}
 	for i := range uint(3) {
 		_, err := Retry(context.TODO(), operation, WithMaxTries(i))
-		if err != dummyErr {
-			t.Errorf("unexpected error: %s", err.Error())
+		if !errors.Is(err, dummyErr) {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if !errors.Is(err, ErrPermanent) {
+			t.Errorf("error is not ErrPermanent: %v", err)
 		}
 	}
 }
