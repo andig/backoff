@@ -1,64 +1,62 @@
-//go:build ignore
-
 package backoff
 
 import (
+	"context"
 	"errors"
-	"math/rand/v2"
 	"testing"
-	"time"
 )
 
-func TestMaxTriesHappy(t *testing.T) {
-	max := 17 + rand.IntN(13)
-	bo := WithMaxRetries(&ZeroBackOff{}, uint64(max))
-
-	// Load up the tries count, but reset should clear the record
-	for ix := 0; ix < max/2; ix++ {
-		bo.NextBackOff()
-	}
-	bo.Reset()
-
-	// Now fill the tries count all the way up
-	for ix := 0; ix < max; ix++ {
-		d := bo.NextBackOff()
-		if d == Stop {
-			t.Errorf("returned Stop on try %d", ix)
+func TestRetryMaxTriesCount(t *testing.T) {
+	// WithMaxTries(n) runs the operation exactly n times (total attempts, not
+	// retries) and then stops with Cause ErrExhausted.
+	for _, n := range []uint{1, 2, 5} {
+		calls := 0
+		_, err := Retry(
+			context.Background(),
+			func() (int, error) {
+				calls++
+				return 0, errors.New("boom")
+			},
+			WithMaxTries(n),
+			WithBackOff(&ZeroBackOff{}),
+			WithMaxElapsedTime(0),
+			withTimer(&testTimer{}),
+		)
+		if calls != int(n) {
+			t.Errorf("WithMaxTries(%d): operation called %d times, want %d", n, calls, n)
 		}
-	}
-
-	// We have now called the BackOff max number of times, we expect
-	// the next result to be Stop, even if we try it multiple times
-	for ix := 0; ix < 7; ix++ {
-		d := bo.NextBackOff()
-		if d != Stop {
-			t.Error("invalid next back off")
+		if !errors.Is(err, ErrExhausted) {
+			t.Errorf("WithMaxTries(%d): Cause = %v, want ErrExhausted", n, err)
 		}
-	}
-
-	// Reset makes it all work again
-	bo.Reset()
-	d := bo.NextBackOff()
-	if d == Stop {
-		t.Error("returned Stop after reset")
 	}
 }
 
-// https://github.com/cenkalti/backoff/issues/80
-func TestMaxTriesZero(t *testing.T) {
-	var called int
-
-	b := WithMaxRetries(&ZeroBackOff{}, 0)
-
-	err := Retry(func() error {
-		called++
-		return errors.New("err")
-	}, b)
-
-	if err == nil {
-		t.Errorf("error expected, nil found")
+func TestRetryMaxTriesUnlimited(t *testing.T) {
+	// The default, WithMaxTries(0), imposes no attempt limit: Retry keeps
+	// trying until the operation succeeds.
+	const successOn = 6
+	calls := 0
+	res, err := Retry(
+		context.Background(),
+		func() (int, error) {
+			calls++
+			if calls == successOn {
+				return 42, nil
+			}
+			return 0, errors.New("boom")
+		},
+		WithMaxTries(0),
+		WithBackOff(&ZeroBackOff{}),
+		WithMaxElapsedTime(0),
+		withTimer(&testTimer{}),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if called != 1 {
-		t.Errorf("operation is called %d times", called)
+	if calls != successOn {
+		t.Errorf("operation called %d times, want %d", calls, successOn)
+	}
+	if res != 42 {
+		t.Errorf("res = %d, want 42", res)
 	}
 }

@@ -359,3 +359,180 @@ func TestIssue177(t *testing.T) {
 		}
 	}
 }
+
+// spyTimer records the durations it is asked to wait, then fires immediately.
+type spyTimer struct {
+	starts []time.Duration
+	timer  *time.Timer
+}
+
+func (t *spyTimer) Start(d time.Duration) {
+	t.starts = append(t.starts, d)
+	t.timer = time.NewTimer(0)
+}
+
+func (t *spyTimer) Stop() {
+	if t.timer != nil {
+		t.timer.Stop()
+	}
+}
+
+func (t *spyTimer) C() <-chan time.Time { return t.timer.C }
+
+// countingBackOff records how many times it is reset and queried.
+type countingBackOff struct{ resets, nexts int }
+
+func (b *countingBackOff) Reset() { b.resets++ }
+
+func (b *countingBackOff) NextBackOff() time.Duration {
+	b.nexts++
+	return time.Second
+}
+
+func TestRetryContextDeadline(t *testing.T) {
+	// A context deadline surfaces as Cause context.DeadlineExceeded — distinct
+	// from WithMaxElapsedTime's ErrMaxElapsedTime — with LastErr preserved.
+	opErr := errors.New("operation error")
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Minute))
+	defer cancel()
+
+	_, err := Retry(ctx, func() (int, error) { return 0, opErr }, withTimer(&testTimer{}))
+
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("Cause is not context.DeadlineExceeded: %v", err)
+	}
+	if !errors.Is(err, opErr) {
+		t.Errorf("operation error not in result: %v", err)
+	}
+	if re := AsRetryError(err); re == nil || re.Cause != context.DeadlineExceeded {
+		t.Errorf("RetryError.Cause = %v, want context.DeadlineExceeded", err)
+	}
+}
+
+func TestRetryNotify(t *testing.T) {
+	t.Run("fires between attempts with the failing error, not on success", func(t *testing.T) {
+		const successOn = 3
+		calls := 0
+		var got []string
+		_, err := Retry(context.Background(),
+			func() (int, error) {
+				calls++
+				if calls == successOn {
+					return 1, nil
+				}
+				return 0, fmt.Errorf("attempt %d", calls)
+			},
+			WithBackOff(&ZeroBackOff{}), withTimer(&testTimer{}),
+			WithNotify(func(e error, _ time.Duration) { got = append(got, e.Error()) }),
+		)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(got) != 2 || got[0] != "attempt 1" || got[1] != "attempt 2" {
+			t.Errorf("Notify errors = %v, want [attempt 1 attempt 2]", got)
+		}
+	})
+
+	t.Run("not called for the terminal, exhausting error", func(t *testing.T) {
+		// Two attempts both fail: Notify fires once (the single retry), not for
+		// the second attempt that hits the limit and stops Retry.
+		n := 0
+		_, err := Retry(context.Background(),
+			func() (int, error) { return 0, errors.New("boom") },
+			WithMaxTries(2), WithBackOff(&ZeroBackOff{}), withTimer(&testTimer{}),
+			WithNotify(func(error, time.Duration) { n++ }),
+		)
+		if !errors.Is(err, ErrExhausted) {
+			t.Fatalf("Cause = %v, want ErrExhausted", err)
+		}
+		if n != 1 {
+			t.Errorf("Notify called %d times, want 1 (only the retry, not the terminal error)", n)
+		}
+	})
+
+	t.Run("not called on a permanent error", func(t *testing.T) {
+		n := 0
+		_, _ = Retry(context.Background(),
+			func() (int, error) { return 0, Permanent(errors.New("nope")) },
+			withTimer(&testTimer{}),
+			WithNotify(func(error, time.Duration) { n++ }),
+		)
+		if n != 0 {
+			t.Errorf("Notify called %d times on a permanent error, want 0", n)
+		}
+	})
+
+	t.Run("not called on context cancellation", func(t *testing.T) {
+		n := 0
+		ctx, cancel := context.WithCancel(context.Background())
+		_, _ = Retry(ctx,
+			func() (int, error) { cancel(); return 0, errors.New("boom") },
+			WithBackOff(&ZeroBackOff{}), withTimer(&testTimer{}),
+			WithNotify(func(error, time.Duration) { n++ }),
+		)
+		if n != 0 {
+			t.Errorf("Notify called %d times on cancellation, want 0", n)
+		}
+	})
+}
+
+func TestRetryAfter(t *testing.T) {
+	// A RetryAfterError overrides the next wait with its own duration and
+	// resets the backoff policy.
+	const retryAfter = 42 * time.Second
+	bo := &countingBackOff{}
+	tm := &spyTimer{}
+	calls := 0
+
+	_, err := Retry(context.Background(),
+		func() (int, error) {
+			calls++
+			if calls == 1 {
+				return 0, &RetryAfterError{Duration: retryAfter}
+			}
+			return 1, nil
+		},
+		WithBackOff(bo),
+		WithMaxElapsedTime(0),
+		withTimer(tm),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tm.starts) != 1 || tm.starts[0] != retryAfter {
+		t.Errorf("timer waits = %v, want a single wait of %v", tm.starts, retryAfter)
+	}
+	// Reset is called once at the start of Retry and again because of RetryAfter.
+	if bo.resets != 2 {
+		t.Errorf("BackOff.Reset called %d times, want 2 (initial + RetryAfter)", bo.resets)
+	}
+}
+
+func TestRetryAfterError(t *testing.T) {
+	err := RetryAfter(3)
+	var ra *RetryAfterError
+	if !errors.As(err, &ra) {
+		t.Fatalf("RetryAfter did not return a *RetryAfterError: %v", err)
+	}
+	if ra.Duration != 3*time.Second {
+		t.Errorf("Duration = %v, want 3s", ra.Duration)
+	}
+	if got, want := ra.Error(), "retry after 3s"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
+
+func TestRetryErrorString(t *testing.T) {
+	re := &RetryError{LastErr: errors.New("last"), Cause: ErrExhausted}
+	if got, want := re.Error(), "backoff: retries exhausted (last error: last)"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+	// RetryError implements Unwrap() []error, so the single-value errors.Unwrap
+	// returns nil; callers must use errors.Is/As. This pins the documented gotcha.
+	if got := errors.Unwrap(error(re)); got != nil {
+		t.Errorf("errors.Unwrap(RetryError) = %v, want nil", got)
+	}
+	if AsRetryError(nil) != nil {
+		t.Error("AsRetryError(nil) should be nil")
+	}
+}
