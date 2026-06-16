@@ -7,13 +7,44 @@ is an algorithm that uses feedback to multiplicatively decrease the rate of some
 in order to gradually find an acceptable rate.
 The retries exponentially increase and stop increasing when a certain threshold is met.
 
+## Install
+
+```
+go get github.com/cenkalti/backoff/v6
+```
+
+Note the `/v6` at the end of the import path.
+
 ## Usage
 
-Import path is `github.com/cenkalti/backoff/v6`. Please note the version part at the end.
+For most cases, wrap the operation you want to retry in `Retry`:
 
-For most cases, use `Retry` function. See [example_test.go][example] for an example.
+```go
+result, err := backoff.Retry(ctx, func() (string, error) {
+	resp, err := http.Get("https://www.example.com")
+	if err != nil {
+		return "", err // transient: Retry will try again
+	}
+	defer resp.Body.Close()
 
-If you have specific needs, copy `Retry` function (from [retry.go][retry-src]) into your code and modify it as needed.
+	switch {
+	case resp.StatusCode >= 500:
+		return "", fmt.Errorf("server error: %s", resp.Status) // retried
+	case resp.StatusCode >= 400:
+		// client errors won't fix themselves, so stop retrying.
+		return "", backoff.Permanent(fmt.Errorf("client error: %s", resp.Status))
+	}
+	return "ok", nil
+}, backoff.WithMaxTries(5))
+```
+
+`Retry` runs the operation at least once and keeps retrying with exponential
+backoff until it succeeds, returns a `Permanent` error, or a limit is reached.
+See [example_test.go][example] for a fuller example, and the [package docs][godoc]
+for the available options (`WithBackOff`, `WithMaxTries`, `WithMaxElapsedTime`,
+`WithNotify`).
+
+If `Retry` does not fit your needs, copy it from [retry.go][retry-src] and adapt it.
 
 ### Handling errors
 
@@ -56,7 +87,7 @@ Two independent limits cap how long `Retry` runs, and they behave differently:
 * If proposed change is not a common use case, I will probably not accept it.
 
 [godoc]: https://pkg.go.dev/github.com/cenkalti/backoff/v6
-[godoc image]: https://godoc.org/github.com/cenkalti/backoff?status.png
+[godoc image]: https://pkg.go.dev/badge/github.com/cenkalti/backoff/v6.svg
 
 [google-http-java-client]: https://github.com/google/google-http-java-client/blob/da1aa993e90285ec18579f1553339b00e19b3ab5/google-http-client/src/main/java/com/google/api/client/util/ExponentialBackOff.java
 [exponential backoff wiki]: http://en.wikipedia.org/wiki/Exponential_backoff
