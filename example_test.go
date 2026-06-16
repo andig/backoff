@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"time"
 
@@ -13,12 +14,20 @@ import (
 )
 
 func ExampleRetry() {
+	// A stand-in for the remote service. In real code this is the endpoint you
+	// are calling; here it is an in-process test server so the example is
+	// self-contained and does not depend on the network.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
 	// Define an operation function that returns a value and an error.
 	// The value can be any type.
 	// We'll pass this operation to Retry function.
 	operation := func() (string, error) {
 		// An example request that may fail.
-		resp, err := http.Get("http://httpbin.org/get")
+		resp, err := http.Get(server.URL)
 		if err != nil {
 			return "", err
 		}
@@ -26,7 +35,7 @@ func ExampleRetry() {
 
 		// If we are being rate limited, return a RetryAfter to specify how long to wait.
 		// This will also reset the backoff policy.
-		if resp.StatusCode == 429 {
+		if resp.StatusCode == http.StatusTooManyRequests {
 			seconds, err := strconv.ParseInt(resp.Header.Get("Retry-After"), 10, 64)
 			if err == nil {
 				return "", backoff.RetryAfter(int(seconds))
@@ -56,8 +65,13 @@ func ExampleRetry() {
 }
 
 func ExampleRetry_outcomes() {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
 	operation := func() (string, error) {
-		resp, err := http.Get("http://httpbin.org/get")
+		resp, err := http.Get(server.URL)
 		if err != nil {
 			return "", err
 		}
@@ -99,6 +113,7 @@ func ExampleRetry_outcomes() {
 	if re := backoff.AsRetryError(err); re != nil {
 		fmt.Println("last error:", re.LastErr)
 	}
+	// Output: ok
 }
 
 func ExampleTicker() {
