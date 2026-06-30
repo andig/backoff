@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0.0] - 2026-06-30
+
+### Changed
+
+- `RetryAfter` now takes a `time.Duration` and a required cause error: `RetryAfter(d time.Duration, cause error)`. The cause is preserved as `RetryError.LastErr` when retrying stops. (#184)
+
+### Added
+
+- `RetryAfterError.Err`, exposed via `Unwrap`.
+
 ## [6.0.0] - 2026-06-16
 
 ### Added
