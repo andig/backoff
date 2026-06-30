@@ -135,32 +135,41 @@ func Retry[T any](ctx context.Context, operation Operation[T], opts ...RetryOpti
 			return res, &RetryError{LastErr: perm.err, Cause: ErrPermanent}
 		}
 
+		// A RetryAfterError carries the delay before the next attempt; if it also
+		// carries an underlying error, that is the meaningful error to report as
+		// LastErr should retrying stop (mirrors how a permanent error surfaces its
+		// inner error). errors.As matches it whether returned directly or wrapped.
+		lastErr := err
+		var retryAfter *RetryAfterError
+		if errors.As(err, &retryAfter) && retryAfter.err != nil {
+			lastErr = retryAfter.err
+		}
+
 		// Stop retrying if maximum tries exceeded.
 		if args.MaxTries > 0 && numTries >= args.MaxTries {
-			return res, &RetryError{LastErr: err, Cause: ErrExhausted}
+			return res, &RetryError{LastErr: lastErr, Cause: ErrExhausted}
 		}
 
 		// Stop retrying if context is cancelled.
 		if cerr := context.Cause(ctx); cerr != nil {
-			return res, &RetryError{LastErr: err, Cause: cerr}
+			return res, &RetryError{LastErr: lastErr, Cause: cerr}
 		}
 
 		// Calculate next backoff duration.
 		next := args.BackOff.NextBackOff()
 		if next == Stop {
-			return res, &RetryError{LastErr: err, Cause: ErrExhausted}
+			return res, &RetryError{LastErr: lastErr, Cause: ErrExhausted}
 		}
 
-		// Reset backoff if RetryAfterError is encountered.
-		var retryAfter *RetryAfterError
-		if errors.As(err, &retryAfter) {
+		// Reset backoff if a RetryAfterError requested a specific delay.
+		if retryAfter != nil {
 			next = retryAfter.Duration
 			args.BackOff.Reset()
 		}
 
 		// Stop retrying if maximum elapsed time exceeded.
 		if args.MaxElapsedTime > 0 && time.Since(startedAt)+next > args.MaxElapsedTime {
-			return res, &RetryError{LastErr: err, Cause: ErrMaxElapsedTime}
+			return res, &RetryError{LastErr: lastErr, Cause: ErrMaxElapsedTime}
 		}
 
 		// Notify on error if a notifier function is provided.
@@ -173,7 +182,7 @@ func Retry[T any](ctx context.Context, operation Operation[T], opts ...RetryOpti
 		select {
 		case <-args.Timer.C():
 		case <-ctx.Done():
-			return res, &RetryError{LastErr: err, Cause: context.Cause(ctx)}
+			return res, &RetryError{LastErr: lastErr, Cause: context.Cause(ctx)}
 		}
 	}
 }

@@ -38,7 +38,7 @@ func ExampleRetry() {
 		if resp.StatusCode == http.StatusTooManyRequests {
 			seconds, err := strconv.ParseInt(resp.Header.Get("Retry-After"), 10, 64)
 			if err == nil {
-				return "", backoff.RetryAfter(int(seconds))
+				return "", backoff.RetryAfter(time.Duration(seconds)*time.Second, fmt.Errorf("rate limited: %s", resp.Status))
 			}
 		}
 

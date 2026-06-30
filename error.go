@@ -103,16 +103,35 @@ func (e *permanent) Is(target error) bool { return target == ErrPermanent }
 // duration. When an operation returns one (directly or wrapped), Retry waits
 // that duration before the next attempt and resets the backoff policy, so the
 // backoff sequence restarts afterward.
+//
+// The error that triggered the wait (passed to RetryAfter) is available via
+// Unwrap, so errors.Is and errors.As see through the RetryAfterError. If
+// retrying later stops because a limit is reached or the context ends, Retry
+// reports that error as RetryError.LastErr instead of the RetryAfterError
+// itself, so the underlying cause is not lost.
 type RetryAfterError struct {
 	Duration time.Duration
+	err      error
 }
 
-// RetryAfter returns a RetryAfter error that specifies how long to wait before retrying.
-func RetryAfter(seconds int) error {
-	return &RetryAfterError{Duration: time.Duration(seconds) * time.Second}
+// RetryAfter returns a RetryAfterError that tells Retry to wait the given
+// duration before the next attempt. cause is the error that triggered the
+// wait; it is preserved as RetryError.LastErr if retrying stops. Pass a non-nil
+// cause so the failure reason is not lost; nil is allowed but discouraged.
+func RetryAfter(d time.Duration, cause error) error {
+	return &RetryAfterError{
+		Duration: d,
+		err:      cause,
+	}
 }
 
 // Error returns a string representation of the RetryAfter error.
 func (e *RetryAfterError) Error() string {
+	if e.err != nil {
+		return fmt.Sprintf("%s (retry after %s)", e.err, e.Duration)
+	}
 	return fmt.Sprintf("retry after %s", e.Duration)
 }
+
+// Unwrap returns the error that triggered the retry, if one was provided.
+func (e *RetryAfterError) Unwrap() error { return e.err }

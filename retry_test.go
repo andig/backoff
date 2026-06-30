@@ -509,7 +509,8 @@ func TestRetryAfter(t *testing.T) {
 }
 
 func TestRetryAfterError(t *testing.T) {
-	err := RetryAfter(3)
+	// nil cause: behaves like a bare retry-after, Unwrap is nil.
+	err := RetryAfter(3*time.Second, nil)
 	var ra *RetryAfterError
 	if !errors.As(err, &ra) {
 		t.Fatalf("RetryAfter did not return a *RetryAfterError: %v", err)
@@ -519,6 +520,57 @@ func TestRetryAfterError(t *testing.T) {
 	}
 	if got, want := ra.Error(), "retry after 3s"; got != want {
 		t.Errorf("Error() = %q, want %q", got, want)
+	}
+	if errors.Unwrap(err) != nil {
+		t.Errorf("Unwrap() = %v, want nil", errors.Unwrap(err))
+	}
+
+	// With a cause: it is wrapped (Unwrap/Is see it) and shown in the message.
+	cause := errors.New("rate limited")
+	werr := RetryAfter(3*time.Second, cause)
+	if !errors.Is(werr, cause) {
+		t.Errorf("RetryAfter(_, cause) does not wrap cause: %v", werr)
+	}
+	if got, want := werr.Error(), "rate limited (retry after 3s)"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+}
+
+// https://github.com/cenkalti/backoff/issues/184
+func TestRetryAfterCarriesError(t *testing.T) {
+	// When an operation returns RetryAfter with a cause and retrying then stops
+	// (here via WithMaxTries), the cause — not the RetryAfterError — is reported
+	// as LastErr, so the error context is not discarded.
+	cause := errors.New("rate limited")
+	_, err := Retry(
+		context.Background(),
+		func() (int, error) { return 0, RetryAfter(time.Second, cause) },
+		WithMaxTries(1),
+		withTimer(&testTimer{}),
+	)
+	if !errors.Is(err, ErrExhausted) {
+		t.Errorf("Cause = %v, want ErrExhausted", err)
+	}
+	if !errors.Is(err, cause) {
+		t.Errorf("cause not in result: %v", err)
+	}
+	re := AsRetryError(err)
+	if re == nil || re.LastErr != cause {
+		t.Errorf("LastErr = %v, want %v", re, cause)
+	}
+
+	// A nil cause keeps the previous behavior: LastErr is the RetryAfterError
+	// itself.
+	_, err = Retry(
+		context.Background(),
+		func() (int, error) { return 0, RetryAfter(time.Second, nil) },
+		WithMaxTries(1),
+		withTimer(&testTimer{}),
+	)
+	if re := AsRetryError(err); re == nil {
+		t.Fatalf("result is not a *RetryError: %v", err)
+	} else if _, ok := re.LastErr.(*RetryAfterError); !ok {
+		t.Errorf("LastErr = %T, want *RetryAfterError", re.LastErr)
 	}
 }
 
