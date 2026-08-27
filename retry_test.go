@@ -55,6 +55,36 @@ func TestRetry(t *testing.T) {
 	}
 }
 
+func TestRetryError(t *testing.T) {
+	const successOn = 3
+	var i = 0
+
+	// This function is successful on "successOn" calls.
+	f := func() error {
+		i++
+		if i == successOn {
+			return nil
+		}
+		return errors.New("error")
+	}
+
+	err := RetryError(context.Background(), f, WithBackOff(NewExponentialBackOff()), withTimer(&testTimer{}))
+	if err != nil {
+		t.Errorf("unexpected error: %s", err.Error())
+	}
+	if i != successOn {
+		t.Errorf("invalid number of retries: %d", i)
+	}
+
+	// The operation error must reach the caller unchanged; the rest of the
+	// failure semantics is Retry's and is covered by its own tests.
+	err = RetryError(context.Background(), func() error { return io.EOF },
+		WithMaxTries(1), withTimer(&testTimer{}))
+	if !errors.Is(err, io.EOF) {
+		t.Errorf("expected io.EOF to be preserved, got: %v", err)
+	}
+}
+
 func TestRetryWithData(t *testing.T) {
 	const successOn = 3
 	var i = 0

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `RetryError`, a `Retry` variant for operations that return only an error: `RetryError(ctx, func() error, opts...) error`.
+
 ### Changed
 
 - `RetryError` is now named `Error`. The type is unchanged otherwise; `backoff.Error` reads better than stuttering `backoff.RetryError` and frees the name for a future function.

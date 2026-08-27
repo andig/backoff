@@ -42,6 +42,15 @@ See [example_test.go][example] for a fuller example, and the [package docs][godo
 for the available options (`WithBackOff`, `WithMaxTries`, `WithMaxElapsedTime`,
 `WithNotify`).
 
+When the operation has no result to return, use `RetryError`, which takes a
+`func() error` and returns only an error:
+
+```go
+err := backoff.RetryError(ctx, func() error {
+	return db.Ping()
+}, backoff.WithMaxTries(5))
+```
+
 If `Retry` does not fit your needs, copy it from [retry.go][retry-src] and adapt it.
 
 ### Handling errors
