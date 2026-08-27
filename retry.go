@@ -91,8 +91,16 @@ func WithMaxElapsedTime(d time.Duration) RetryOption {
 	}
 }
 
-// Retry attempts the operation until it succeeds, returns a Permanent error,
-// or backoff completes. It ensures the operation is executed at least once.
+// Retry is RetryCtx with context.Background(): retrying is bounded only by
+// WithMaxElapsedTime (15 minutes by default), WithMaxTries, and the backoff
+// policy. Use RetryCtx to bound it with a context as well.
+func Retry[T any](operation Operation[T], opts ...RetryOption) (T, error) {
+	return RetryCtx(context.Background(), operation, opts...)
+}
+
+// RetryCtx attempts the operation until it succeeds, returns a Permanent
+// error, or backoff completes. It ensures the operation is executed at least
+// once.
 //
 // On success it returns the operation result and a nil error. On any failure
 // it returns the last result and an *Error whose Cause reports why it
@@ -105,7 +113,7 @@ func WithMaxElapsedTime(d time.Duration) RetryOption {
 // context, so capture ctx inside the operation if you want cancellation to
 // abort an in-flight attempt. To bound only how long backoff keeps retrying,
 // without affecting in-flight attempts, use WithMaxElapsedTime instead.
-func Retry[T any](ctx context.Context, operation Operation[T], opts ...RetryOption) (T, error) {
+func RetryCtx[T any](ctx context.Context, operation Operation[T], opts ...RetryOption) (T, error) {
 	// Initialize default retry options.
 	args := &retryOptions{
 		BackOff:        NewExponentialBackOff(),
@@ -187,11 +195,17 @@ func Retry[T any](ctx context.Context, operation Operation[T], opts ...RetryOpti
 	}
 }
 
-// RetryError is Retry for an operation that returns no result, only an error.
-// It behaves identically to Retry in every other respect, including the
-// options it accepts and the *Error it returns on failure.
-func RetryError(ctx context.Context, operation func() error, opts ...RetryOption) error {
-	_, err := Retry(ctx, func() (struct{}, error) {
+// RetryError is RetryErrorCtx with context.Background(), as Retry is to
+// RetryCtx.
+func RetryError(operation func() error, opts ...RetryOption) error {
+	return RetryErrorCtx(context.Background(), operation, opts...)
+}
+
+// RetryErrorCtx is RetryCtx for an operation that returns no result, only an
+// error. It behaves identically to RetryCtx in every other respect, including
+// the options it accepts and the *Error it returns on failure.
+func RetryErrorCtx(ctx context.Context, operation func() error, opts ...RetryOption) error {
+	_, err := RetryCtx(ctx, func() (struct{}, error) {
 		return struct{}{}, operation()
 	}, opts...)
 	return err

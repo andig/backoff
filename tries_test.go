@@ -11,7 +11,7 @@ func TestRetryMaxTriesCount(t *testing.T) {
 	// retries) and then stops with Cause ErrExhausted.
 	for _, n := range []uint{1, 2, 5} {
 		calls := 0
-		_, err := Retry(
+		_, err := RetryCtx(
 			context.Background(),
 			func() (int, error) {
 				calls++
@@ -36,7 +36,7 @@ func TestRetryMaxTriesUnlimited(t *testing.T) {
 	// trying until the operation succeeds.
 	const successOn = 6
 	calls := 0
-	res, err := Retry(
+	res, err := RetryCtx(
 		context.Background(),
 		func() (int, error) {
 			calls++
