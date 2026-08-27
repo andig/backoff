@@ -79,6 +79,8 @@ if errors.As(err, &re) {
 }
 ```
 
+Printing the error prints your operation's own message, undecorated: the cause is not prefixed onto it. Match the cause with `errors.Is` or read the `Cause` field instead.
+
 Mark an error non-retriable with `backoff.Permanent(err)`; `Retry` stops immediately and returns an `*Error` whose `Cause` is `ErrPermanent` and whose `LastErr` is `err`.
 
 ### Bounding total time

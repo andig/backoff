@@ -606,8 +606,21 @@ func TestRetryAfterCarriesError(t *testing.T) {
 }
 
 func TestErrorString(t *testing.T) {
+	// The message is the operation's own error, undecorated by the cause.
 	re := &Error{LastErr: errors.New("last"), Cause: ErrExhausted}
-	if got, want := re.Error(), "backoff: retries exhausted (last error: last)"; got != want {
+	if got, want := re.Error(), "last"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+	// A permanent failure reports the error passed to Permanent, with no
+	// "backoff: permanent error" prefix.
+	_, err := Retry(context.Background(), func() (int, error) {
+		return 0, Permanent(errors.New("boom"))
+	}, withTimer(&testTimer{}))
+	if got, want := err.Error(), "boom"; got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
+	}
+	// With no operation error to report, the cause stands in.
+	if got, want := (&Error{Cause: ErrExhausted}).Error(), ErrExhausted.Error(); got != want {
 		t.Errorf("Error() = %q, want %q", got, want)
 	}
 	// Error implements Unwrap() []error, so the single-value errors.Unwrap
