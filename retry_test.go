@@ -46,12 +46,43 @@ func TestRetry(t *testing.T) {
 		return false, errors.New("error")
 	}
 
-	_, err := Retry(context.Background(), f, WithBackOff(NewExponentialBackOff()), withTimer(&testTimer{}))
+	_, err := RetryCtx(context.Background(), f, WithBackOff(NewExponentialBackOff()), withTimer(&testTimer{}))
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
 	if i != successOn {
 		t.Errorf("invalid number of retries: %d", i)
+	}
+}
+
+// TestRetryNoContext covers the context-free wrappers, which must behave like
+// their Ctx counterparts called with context.Background().
+func TestRetryNoContext(t *testing.T) {
+	var i int
+	res, err := Retry(func() (int, error) {
+		i++
+		if i < 3 {
+			return 0, errors.New("error")
+		}
+		return 42, nil
+	}, WithBackOff(NewExponentialBackOff()), withTimer(&testTimer{}))
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+	if res != 42 {
+		t.Errorf("expected 42, got %d", res)
+	}
+
+	var j int
+	err = RetryError(func() error {
+		j++
+		return io.EOF
+	}, WithMaxTries(2), withTimer(&testTimer{}))
+	if !errors.Is(err, ErrExhausted) || !errors.Is(err, io.EOF) {
+		t.Errorf("expected ErrExhausted wrapping io.EOF, got: %v", err)
+	}
+	if j != 2 {
+		t.Errorf("expected 2 tries, got %d", j)
 	}
 }
 
@@ -68,7 +99,7 @@ func TestRetryError(t *testing.T) {
 		return errors.New("error")
 	}
 
-	err := RetryError(context.Background(), f, WithBackOff(NewExponentialBackOff()), withTimer(&testTimer{}))
+	err := RetryErrorCtx(context.Background(), f, WithBackOff(NewExponentialBackOff()), withTimer(&testTimer{}))
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
@@ -78,7 +109,7 @@ func TestRetryError(t *testing.T) {
 
 	// The operation error must reach the caller unchanged; the rest of the
 	// failure semantics is Retry's and is covered by its own tests.
-	err = RetryError(context.Background(), func() error { return io.EOF },
+	err = RetryErrorCtx(context.Background(), func() error { return io.EOF },
 		WithMaxTries(1), withTimer(&testTimer{}))
 	if !errors.Is(err, io.EOF) {
 		t.Errorf("expected io.EOF to be preserved, got: %v", err)
@@ -103,7 +134,7 @@ func TestRetryWithData(t *testing.T) {
 		return 1, errors.New("error")
 	}
 
-	res, err := Retry(context.Background(), f, WithBackOff(NewExponentialBackOff()), withTimer(&testTimer{}))
+	res, err := RetryCtx(context.Background(), f, WithBackOff(NewExponentialBackOff()), withTimer(&testTimer{}))
 	if err != nil {
 		t.Errorf("unexpected error: %s", err.Error())
 	}
@@ -139,7 +170,7 @@ func TestRetryContext(t *testing.T) {
 		return false, fmt.Errorf("error (%d)", i)
 	}
 
-	_, err := Retry(ctx, f, WithBackOff(NewConstantBackOff(time.Millisecond)), withTimer(&testTimer{}))
+	_, err := RetryCtx(ctx, f, WithBackOff(NewConstantBackOff(time.Millisecond)), withTimer(&testTimer{}))
 	if err == nil {
 		t.Errorf("error is unexpectedly nil")
 	}
@@ -168,7 +199,7 @@ func TestRetryContextErrorIncludesOperationError(t *testing.T) {
 		return false, opErr
 	}
 
-	_, err := Retry(ctx, f, WithBackOff(NewConstantBackOff(time.Millisecond)), withTimer(&testTimer{}))
+	_, err := RetryCtx(ctx, f, WithBackOff(NewConstantBackOff(time.Millisecond)), withTimer(&testTimer{}))
 	if !errors.Is(err, ctxErr) {
 		t.Errorf("context error not in result: %v", err)
 	}
@@ -181,7 +212,7 @@ func TestRetryContextErrorIncludesOperationError(t *testing.T) {
 func TestRetryMaxElapsedTimeErrorIncludesOperationError(t *testing.T) {
 	opErr := errors.New("operation error")
 
-	_, err := Retry(
+	_, err := RetryCtx(
 		context.Background(),
 		func() (bool, error) { return false, opErr },
 		WithMaxElapsedTime(time.Millisecond),
@@ -199,7 +230,7 @@ func TestErrorFields(t *testing.T) {
 	opErr := errors.New("operation error")
 
 	// MaxTries reached: Cause is ErrExhausted, LastErr is the operation error.
-	_, err := Retry(
+	_, err := RetryCtx(
 		context.Background(),
 		func() (bool, error) { return false, opErr },
 		WithMaxTries(1),
@@ -225,7 +256,7 @@ func TestErrorFields(t *testing.T) {
 	}
 
 	// Backoff policy returning Stop also reports ErrExhausted.
-	_, err = Retry(
+	_, err = RetryCtx(
 		context.Background(),
 		func() (bool, error) { return false, opErr },
 		WithBackOff(&StopBackOff{}),
@@ -244,7 +275,7 @@ func TestRetryPermanent(t *testing.T) {
 		numRetries := -1
 		maxRetries := 1
 
-		res, _ := Retry(
+		res, _ := RetryCtx(
 			context.Background(),
 			func() (int, error) {
 				numRetries++
@@ -348,7 +379,7 @@ func TestPermanent(t *testing.T) {
 func TestRetryPermanentError(t *testing.T) {
 	opErr := errors.New("operation error")
 
-	_, err := Retry(
+	_, err := RetryCtx(
 		context.Background(),
 		func() (bool, error) { return false, Permanent(opErr) },
 		withTimer(&testTimer{}),
@@ -380,7 +411,7 @@ func TestIssue177(t *testing.T) {
 		return 0, Permanent(dummyErr)
 	}
 	for i := range uint(3) {
-		_, err := Retry(context.TODO(), operation, WithMaxTries(i))
+		_, err := RetryCtx(context.TODO(), operation, WithMaxTries(i))
 		if !errors.Is(err, dummyErr) {
 			t.Errorf("unexpected error: %v", err)
 		}
@@ -426,7 +457,7 @@ func TestRetryContextDeadline(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Minute))
 	defer cancel()
 
-	_, err := Retry(ctx, func() (int, error) { return 0, opErr }, withTimer(&testTimer{}))
+	_, err := RetryCtx(ctx, func() (int, error) { return 0, opErr }, withTimer(&testTimer{}))
 
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("Cause is not context.DeadlineExceeded: %v", err)
@@ -445,7 +476,7 @@ func TestRetryNotify(t *testing.T) {
 		const successOn = 3
 		calls := 0
 		var got []string
-		_, err := Retry(context.Background(),
+		_, err := RetryCtx(context.Background(),
 			func() (int, error) {
 				calls++
 				if calls == successOn {
@@ -468,7 +499,7 @@ func TestRetryNotify(t *testing.T) {
 		// Two attempts both fail: Notify fires once (the single retry), not for
 		// the second attempt that hits the limit and stops Retry.
 		n := 0
-		_, err := Retry(context.Background(),
+		_, err := RetryCtx(context.Background(),
 			func() (int, error) { return 0, errors.New("boom") },
 			WithMaxTries(2), WithBackOff(&ZeroBackOff{}), withTimer(&testTimer{}),
 			WithNotify(func(error, time.Duration) { n++ }),
@@ -483,7 +514,7 @@ func TestRetryNotify(t *testing.T) {
 
 	t.Run("not called on a permanent error", func(t *testing.T) {
 		n := 0
-		_, _ = Retry(context.Background(),
+		_, _ = RetryCtx(context.Background(),
 			func() (int, error) { return 0, Permanent(errors.New("nope")) },
 			withTimer(&testTimer{}),
 			WithNotify(func(error, time.Duration) { n++ }),
@@ -496,7 +527,7 @@ func TestRetryNotify(t *testing.T) {
 	t.Run("not called on context cancellation", func(t *testing.T) {
 		n := 0
 		ctx, cancel := context.WithCancel(context.Background())
-		_, _ = Retry(ctx,
+		_, _ = RetryCtx(ctx,
 			func() (int, error) { cancel(); return 0, errors.New("boom") },
 			WithBackOff(&ZeroBackOff{}), withTimer(&testTimer{}),
 			WithNotify(func(error, time.Duration) { n++ }),
@@ -515,7 +546,7 @@ func TestRetryAfter(t *testing.T) {
 	tm := &spyTimer{}
 	calls := 0
 
-	_, err := Retry(context.Background(),
+	_, err := RetryCtx(context.Background(),
 		func() (int, error) {
 			calls++
 			if calls == 1 {
@@ -573,7 +604,7 @@ func TestRetryAfterCarriesError(t *testing.T) {
 	// (here via WithMaxTries), the cause — not the RetryAfterError — is reported
 	// as LastErr, so the error context is not discarded.
 	cause := errors.New("rate limited")
-	_, err := Retry(
+	_, err := RetryCtx(
 		context.Background(),
 		func() (int, error) { return 0, RetryAfter(time.Second, cause) },
 		WithMaxTries(1),
@@ -592,7 +623,7 @@ func TestRetryAfterCarriesError(t *testing.T) {
 
 	// A nil cause keeps the previous behavior: LastErr is the RetryAfterError
 	// itself.
-	_, err = Retry(
+	_, err = RetryCtx(
 		context.Background(),
 		func() (int, error) { return 0, RetryAfter(time.Second, nil) },
 		WithMaxTries(1),
