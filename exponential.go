@@ -61,14 +61,46 @@ const (
 	DefaultMaxInterval         = 60 * time.Second
 )
 
-// NewExponentialBackOff creates an instance of ExponentialBackOff using default values.
-func NewExponentialBackOff() *ExponentialBackOff {
-	return &ExponentialBackOff{
+// ExponentialBackOffOption changes a setting of an ExponentialBackOff created
+// by NewExponentialBackOff. Settings that are not given keep their default.
+type ExponentialBackOffOption func(*ExponentialBackOff)
+
+// WithInitialInterval sets the interval of the first retry.
+func WithInitialInterval(d time.Duration) ExponentialBackOffOption {
+	return func(b *ExponentialBackOff) { b.InitialInterval = d }
+}
+
+// WithRandomizationFactor sets how far an interval is randomized around its
+// nominal value, e.g. 0.5 for ±50%.
+func WithRandomizationFactor(f float64) ExponentialBackOffOption {
+	return func(b *ExponentialBackOff) { b.RandomizationFactor = f }
+}
+
+// WithMultiplier sets the factor the interval grows by on every retry.
+func WithMultiplier(f float64) ExponentialBackOffOption {
+	return func(b *ExponentialBackOff) { b.Multiplier = f }
+}
+
+// WithMaxInterval caps the interval between retries.
+func WithMaxInterval(d time.Duration) ExponentialBackOffOption {
+	return func(b *ExponentialBackOff) { b.MaxInterval = d }
+}
+
+// NewExponentialBackOff creates an instance of ExponentialBackOff using default
+// values, changed by opts.
+func NewExponentialBackOff(opts ...ExponentialBackOffOption) *ExponentialBackOff {
+	b := &ExponentialBackOff{
 		InitialInterval:     DefaultInitialInterval,
 		RandomizationFactor: DefaultRandomizationFactor,
 		Multiplier:          DefaultMultiplier,
 		MaxInterval:         DefaultMaxInterval,
 	}
+
+	for _, opt := range opts {
+		opt(b)
+	}
+
+	return b
 }
 
 // Reset the interval back to the initial retry interval and restarts the timer.

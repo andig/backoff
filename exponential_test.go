@@ -38,6 +38,33 @@ func TestBackOff(t *testing.T) {
 	}
 }
 
+func TestNewExponentialBackOffOptions(t *testing.T) {
+	// options that are not given keep the default
+	exp := NewExponentialBackOff(WithInitialInterval(time.Second))
+	assertEquals(t, time.Second, exp.InitialInterval)
+	assertEquals(t, DefaultMaxInterval, exp.MaxInterval)
+	if exp.RandomizationFactor != DefaultRandomizationFactor || exp.Multiplier != DefaultMultiplier {
+		t.Errorf("randomization factor = %v, multiplier = %v, want defaults", exp.RandomizationFactor, exp.Multiplier)
+	}
+
+	exp = NewExponentialBackOff(
+		WithInitialInterval(2*time.Second),
+		WithRandomizationFactor(0),
+		WithMultiplier(3),
+		WithMaxInterval(time.Minute),
+	)
+	assertEquals(t, 2*time.Second, exp.InitialInterval)
+	assertEquals(t, time.Minute, exp.MaxInterval)
+	if exp.RandomizationFactor != 0 || exp.Multiplier != 3 {
+		t.Errorf("randomization factor = %v, multiplier = %v, want 0 and 3", exp.RandomizationFactor, exp.Multiplier)
+	}
+
+	// the options reach the intervals the policy hands out
+	exp.Reset()
+	assertEquals(t, 2*time.Second, exp.NextBackOff())
+	assertEquals(t, 6*time.Second, exp.NextBackOff())
+}
+
 func TestGetRandomizedInterval(t *testing.T) {
 	// 33% chance of being 1.
 	assertEquals(t, 1, getRandomValueFromInterval(0.5, 0, 2))
