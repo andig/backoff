@@ -61,7 +61,7 @@ func WithNotify(n Notify) RetryOption {
 
 // WithMaxTries limits the total number of attempts, not retries: WithMaxTries(1)
 // runs the operation once and does not retry. When the limit is reached, Retry
-// returns a *RetryError with Cause ErrExhausted. The default, 0, means no limit.
+// returns an *Error with Cause ErrExhausted. The default, 0, means no limit.
 func WithMaxTries(n uint) RetryOption {
 	return func(args *retryOptions) {
 		args.MaxTries = n
@@ -70,7 +70,7 @@ func WithMaxTries(n uint) RetryOption {
 
 // WithMaxElapsedTime limits the total wall-clock time spent retrying, measured
 // from when Retry is called. When the limit is reached, Retry returns a
-// *RetryError with Cause ErrMaxElapsedTime.
+// *Error with Cause ErrMaxElapsedTime.
 //
 // The limit is checked only between attempts: it gates whether another attempt
 // is scheduled. It does not interrupt an operation that is already running, nor
@@ -95,10 +95,10 @@ func WithMaxElapsedTime(d time.Duration) RetryOption {
 // or backoff completes. It ensures the operation is executed at least once.
 //
 // On success it returns the operation result and a nil error. On any failure
-// it returns the last result and a *RetryError whose Cause reports why it
+// it returns the last result and an *Error whose Cause reports why it
 // stopped — ErrPermanent, ErrExhausted, ErrMaxElapsedTime, or the context
 // cancellation cause — and whose LastErr holds the last operation error.
-// See RetryError and AsRetryError.
+// See Error.
 //
 // ctx bounds the retry loop: its cancellation or deadline stops further
 // attempts and interrupts the wait between them. The operation receives no
@@ -129,10 +129,10 @@ func Retry[T any](ctx context.Context, operation Operation[T], opts ...RetryOpti
 			return res, nil
 		}
 
-		// Stop immediately on a permanent error; surface it as a RetryError.
+		// Stop immediately on a permanent error; surface it as an Error.
 		var perm *permanent
 		if errors.As(err, &perm) {
-			return res, &RetryError{LastErr: perm.err, Cause: ErrPermanent}
+			return res, &Error{LastErr: perm.err, Cause: ErrPermanent}
 		}
 
 		// A RetryAfterError carries the delay before the next attempt; if it also
@@ -147,18 +147,18 @@ func Retry[T any](ctx context.Context, operation Operation[T], opts ...RetryOpti
 
 		// Stop retrying if maximum tries exceeded.
 		if args.MaxTries > 0 && numTries >= args.MaxTries {
-			return res, &RetryError{LastErr: lastErr, Cause: ErrExhausted}
+			return res, &Error{LastErr: lastErr, Cause: ErrExhausted}
 		}
 
 		// Stop retrying if context is cancelled.
 		if cerr := context.Cause(ctx); cerr != nil {
-			return res, &RetryError{LastErr: lastErr, Cause: cerr}
+			return res, &Error{LastErr: lastErr, Cause: cerr}
 		}
 
 		// Calculate next backoff duration.
 		next := args.BackOff.NextBackOff()
 		if next == Stop {
-			return res, &RetryError{LastErr: lastErr, Cause: ErrExhausted}
+			return res, &Error{LastErr: lastErr, Cause: ErrExhausted}
 		}
 
 		// Reset backoff if a RetryAfterError requested a specific delay.
@@ -169,7 +169,7 @@ func Retry[T any](ctx context.Context, operation Operation[T], opts ...RetryOpti
 
 		// Stop retrying if maximum elapsed time exceeded.
 		if args.MaxElapsedTime > 0 && time.Since(startedAt)+next > args.MaxElapsedTime {
-			return res, &RetryError{LastErr: lastErr, Cause: ErrMaxElapsedTime}
+			return res, &Error{LastErr: lastErr, Cause: ErrMaxElapsedTime}
 		}
 
 		// Notify on error if a notifier function is provided.
@@ -182,7 +182,7 @@ func Retry[T any](ctx context.Context, operation Operation[T], opts ...RetryOpti
 		select {
 		case <-args.Timer.C():
 		case <-ctx.Done():
-			return res, &RetryError{LastErr: lastErr, Cause: context.Cause(ctx)}
+			return res, &Error{LastErr: lastErr, Cause: context.Cause(ctx)}
 		}
 	}
 }

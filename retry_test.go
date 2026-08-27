@@ -165,7 +165,7 @@ func TestRetryMaxElapsedTimeErrorIncludesOperationError(t *testing.T) {
 	}
 }
 
-func TestRetryError(t *testing.T) {
+func TestErrorFields(t *testing.T) {
 	opErr := errors.New("operation error")
 
 	// MaxTries reached: Cause is ErrExhausted, LastErr is the operation error.
@@ -183,9 +183,9 @@ func TestRetryError(t *testing.T) {
 	}
 
 	// errors.As exposes the structured fields.
-	var re *RetryError
+	var re *Error
 	if !errors.As(err, &re) {
-		t.Fatalf("result is not a *RetryError: %v", err)
+		t.Fatalf("result is not an *Error: %v", err)
 	}
 	if re.LastErr != opErr {
 		t.Errorf("LastErr = %v, want %v", re.LastErr, opErr)
@@ -330,9 +330,9 @@ func TestRetryPermanentError(t *testing.T) {
 		t.Errorf("operation error not in result: %v", err)
 	}
 
-	re := AsRetryError(err)
-	if re == nil {
-		t.Fatalf("result is not a *RetryError: %v", err)
+	var re *Error
+	if !errors.As(err, &re) {
+		t.Fatalf("result is not an *Error: %v", err)
 	}
 	if re.Cause != ErrPermanent {
 		t.Errorf("Cause = %v, want ErrPermanent", re.Cause)
@@ -404,8 +404,9 @@ func TestRetryContextDeadline(t *testing.T) {
 	if !errors.Is(err, opErr) {
 		t.Errorf("operation error not in result: %v", err)
 	}
-	if re := AsRetryError(err); re == nil || re.Cause != context.DeadlineExceeded {
-		t.Errorf("RetryError.Cause = %v, want context.DeadlineExceeded", err)
+	var re *Error
+	if !errors.As(err, &re) || re.Cause != context.DeadlineExceeded {
+		t.Errorf("Error.Cause = %v, want context.DeadlineExceeded", err)
 	}
 }
 
@@ -554,8 +555,8 @@ func TestRetryAfterCarriesError(t *testing.T) {
 	if !errors.Is(err, cause) {
 		t.Errorf("cause not in result: %v", err)
 	}
-	re := AsRetryError(err)
-	if re == nil || re.LastErr != cause {
+	var re *Error
+	if !errors.As(err, &re) || re.LastErr != cause {
 		t.Errorf("LastErr = %v, want %v", re, cause)
 	}
 
@@ -567,24 +568,21 @@ func TestRetryAfterCarriesError(t *testing.T) {
 		WithMaxTries(1),
 		withTimer(&testTimer{}),
 	)
-	if re := AsRetryError(err); re == nil {
-		t.Fatalf("result is not a *RetryError: %v", err)
+	if !errors.As(err, &re) {
+		t.Fatalf("result is not an *Error: %v", err)
 	} else if _, ok := re.LastErr.(*RetryAfterError); !ok {
 		t.Errorf("LastErr = %T, want *RetryAfterError", re.LastErr)
 	}
 }
 
-func TestRetryErrorString(t *testing.T) {
-	re := &RetryError{LastErr: errors.New("last"), Cause: ErrExhausted}
+func TestErrorString(t *testing.T) {
+	re := &Error{LastErr: errors.New("last"), Cause: ErrExhausted}
 	if got, want := re.Error(), "backoff: retries exhausted (last error: last)"; got != want {
 		t.Errorf("Error() = %q, want %q", got, want)
 	}
-	// RetryError implements Unwrap() []error, so the single-value errors.Unwrap
+	// Error implements Unwrap() []error, so the single-value errors.Unwrap
 	// returns nil; callers must use errors.Is/As. This pins the documented gotcha.
 	if got := errors.Unwrap(error(re)); got != nil {
-		t.Errorf("errors.Unwrap(RetryError) = %v, want nil", got)
-	}
-	if AsRetryError(nil) != nil {
-		t.Error("AsRetryError(nil) should be nil")
+		t.Errorf("errors.Unwrap(Error) = %v, want nil", got)
 	}
 }
