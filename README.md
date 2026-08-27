@@ -10,10 +10,8 @@ The retries exponentially increase and stop increasing when a certain threshold 
 ## Install
 
 ```
-go get github.com/cenkalti/backoff/v7
+go get github.com/andig/backoff
 ```
-
-Note the `/v7` at the end of the import path.
 
 ## Usage
 
@@ -86,11 +84,11 @@ Two independent limits cap how long `Retry` runs, and they behave differently:
 * Please don't send a PR without opening an issue and discussing it first.
 * If proposed change is not a common use case, I will probably not accept it.
 
-[godoc]: https://pkg.go.dev/github.com/cenkalti/backoff/v7
-[godoc image]: https://pkg.go.dev/badge/github.com/cenkalti/backoff/v7.svg
+[godoc]: https://pkg.go.dev/github.com/andig/backoff
+[godoc image]: https://pkg.go.dev/badge/github.com/andig/backoff.svg
 
 [google-http-java-client]: https://github.com/google/google-http-java-client/blob/da1aa993e90285ec18579f1553339b00e19b3ab5/google-http-client/src/main/java/com/google/api/client/util/ExponentialBackOff.java
 [exponential backoff wiki]: http://en.wikipedia.org/wiki/Exponential_backoff
 
-[retry-src]: https://github.com/cenkalti/backoff/blob/v7/retry.go
-[example]: https://github.com/cenkalti/backoff/blob/v7/example_test.go
+[retry-src]: https://github.com/andig/backoff/blob/v7/retry.go
+[example]: https://github.com/andig/backoff/blob/v7/example_test.go
