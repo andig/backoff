@@ -1,7 +1,8 @@
 // Package backoff implements backoff algorithms for retrying operations.
 //
 // Use Retry function for retrying operations that may fail.
-// Use RetryError for operations that return no result.
+// Use RetryError for operations that return no result, and the RetryCtx
+// and RetryErrorCtx variants to bound retrying with a context.
 // If Retry does not meet your needs,
 // copy/paste the function into your project and modify as you wish.
 //
