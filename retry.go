@@ -186,3 +186,13 @@ func Retry[T any](ctx context.Context, operation Operation[T], opts ...RetryOpti
 		}
 	}
 }
+
+// RetryError is Retry for an operation that returns no result, only an error.
+// It behaves identically to Retry in every other respect, including the
+// options it accepts and the *Error it returns on failure.
+func RetryError(ctx context.Context, operation func() error, opts ...RetryOption) error {
+	_, err := Retry(ctx, func() (struct{}, error) {
+		return struct{}{}, operation()
+	}, opts...)
+	return err
+}
