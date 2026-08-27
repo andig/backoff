@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `RetryError`, a `Retry` variant for operations that return only an error: `RetryError(ctx, func() error, opts...) error`.
+- `NewExponentialBackOff` takes options again: `WithInitialInterval`, `WithRandomizationFactor`, `WithMultiplier` and `WithMaxInterval`. Callers that only change one setting no longer have to assign fields after the call or spell out the defaults in a struct literal.
 
 ### Changed
 
