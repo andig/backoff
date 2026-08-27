@@ -20,7 +20,7 @@ Note the `/v7` at the end of the import path.
 For most cases, wrap the operation you want to retry in `Retry`:
 
 ```go
-result, err := backoff.Retry(ctx, func() (string, error) {
+result, err := backoff.Retry(func() (string, error) {
 	resp, err := http.Get("https://www.example.com")
 	if err != nil {
 		return "", err // transient: Retry will try again
@@ -48,10 +48,20 @@ When the operation has no result to return, use `RetryError`, which takes a
 `func() error` and returns only an error:
 
 ```go
-err := backoff.RetryError(ctx, func() error {
+err := backoff.RetryError(func() error {
 	return db.Ping()
 }, backoff.WithMaxTries(5))
 ```
+
+To bound retrying with a `context.Context`, use the `Ctx` variants —
+`RetryCtx` and `RetryErrorCtx`. Cancelling the context stops further attempts
+and interrupts the wait between them:
+
+```go
+result, err := backoff.RetryCtx(ctx, operation)
+```
+
+`Retry` and `RetryError` are those functions with `context.Background()`.
 
 If `Retry` does not fit your needs, copy it from [retry.go][retry-src] and adapt it.
 
@@ -60,7 +70,7 @@ If `Retry` does not fit your needs, copy it from [retry.go][retry-src] and adapt
 On failure, `Retry` always returns an `*Error`. It carries the last operation error (`LastErr`) and the reason retrying stopped (`Cause`). Inspect it with `errors.Is`, or reach the struct with `errors.As`:
 
 ```go
-result, err := backoff.Retry(ctx, operation)
+result, err := backoff.RetryCtx(ctx, operation)
 switch {
 case errors.Is(err, backoff.ErrPermanent):
 	// the operation returned a Permanent error

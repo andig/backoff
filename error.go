@@ -26,7 +26,7 @@ var (
 //
 // Inspect it with errors.Is and errors.As:
 //
-//	result, err := backoff.Retry(ctx, op)
+//	result, err := backoff.RetryCtx(ctx, op)
 //	switch {
 //	case errors.Is(err, backoff.ErrPermanent):
 //		// operation returned a Permanent error

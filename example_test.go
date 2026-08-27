@@ -52,7 +52,7 @@ func ExampleRetry() {
 		return "hello", nil
 	}
 
-	result, err := backoff.Retry(context.TODO(), operation, backoff.WithBackOff(backoff.NewExponentialBackOff()))
+	result, err := backoff.Retry(operation, backoff.WithBackOff(backoff.NewExponentialBackOff()))
 	if err != nil {
 		fmt.Println("Error:", err)
 		return
@@ -82,7 +82,7 @@ func ExampleRetry_outcomes() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	result, err := backoff.Retry(ctx, operation,
+	result, err := backoff.RetryCtx(ctx, operation,
 		backoff.WithMaxElapsedTime(10*time.Second),
 		backoff.WithMaxTries(5),
 	)
