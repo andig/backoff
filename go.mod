@@ -1,3 +1,3 @@
-module github.com/cenkalti/backoff/v7
+module github.com/andig/backoff
 
 go 1.23

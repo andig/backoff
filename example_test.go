@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/cenkalti/backoff/v7"
+	"github.com/andig/backoff"
 )
 
 func ExampleRetry() {
