@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `Error.Error()` now returns the last operation error's message undecorated, instead of prefixing it with the cause (`backoff: permanent error (last error: boom)` becomes `boom`). The cause is still available via `Cause` and `errors.Is`.
 - `RetryError` is now named `Error`. The type is unchanged otherwise; `backoff.Error` reads better than stuttering `backoff.RetryError` and frees the name for a future function.
 
 ### Removed
