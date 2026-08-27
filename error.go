@@ -54,9 +54,14 @@ type Error struct {
 	Cause error
 }
 
-// Error returns a single-line representation of the cause and last error.
+// Error returns the last operation error's message, undecorated by the cause,
+// falling back to the cause when there is no operation error. Read Cause, or
+// match it with errors.Is, to learn why retrying stopped.
 func (e *Error) Error() string {
-	return fmt.Sprintf("%s (last error: %s)", e.Cause, e.LastErr)
+	if e.LastErr == nil {
+		return e.Cause.Error()
+	}
+	return e.LastErr.Error()
 }
 
 // Unwrap returns the cause and the last operation error so both can be

@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `Retry` and `RetryError` no longer take a `context.Context`. The context-taking forms are now `RetryCtx` and `RetryErrorCtx`; the context-free forms use `context.Background()`.
+- `Error.Error()` now returns the last operation error's message undecorated, instead of prefixing it with the cause (`backoff: permanent error (last error: boom)` becomes `boom`). The cause is still available via `Cause` and `errors.Is`.
 - `RetryError` is now named `Error`. The type is unchanged otherwise; `backoff.Error` reads better than stuttering `backoff.RetryError` and frees the name for a future function.
 
 ### Removed
