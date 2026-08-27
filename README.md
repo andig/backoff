@@ -48,7 +48,7 @@ If `Retry` does not fit your needs, copy it from [retry.go][retry-src] and adapt
 
 ### Handling errors
 
-On failure, `Retry` always returns a `*RetryError`. It carries the last operation error (`LastErr`) and the reason retrying stopped (`Cause`). Inspect it with `errors.Is`, or reach the struct with `AsRetryError`:
+On failure, `Retry` always returns an `*Error`. It carries the last operation error (`LastErr`) and the reason retrying stopped (`Cause`). Inspect it with `errors.Is`, or reach the struct with `errors.As`:
 
 ```go
 result, err := backoff.Retry(ctx, operation)
@@ -64,12 +64,13 @@ case errors.Is(err, backoff.ErrExhausted):
 }
 
 // The last operation error is always available, whatever the cause:
-if re := backoff.AsRetryError(err); re != nil {
+var re *backoff.Error
+if errors.As(err, &re) {
 	log.Printf("gave up after last error: %v", re.LastErr)
 }
 ```
 
-Mark an error non-retriable with `backoff.Permanent(err)`; `Retry` stops immediately and returns a `*RetryError` whose `Cause` is `ErrPermanent` and whose `LastErr` is `err`.
+Mark an error non-retriable with `backoff.Permanent(err)`; `Retry` stops immediately and returns an `*Error` whose `Cause` is `ErrPermanent` and whose `LastErr` is `err`.
 
 ### Bounding total time
 

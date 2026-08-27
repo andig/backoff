@@ -110,7 +110,8 @@ func ExampleRetry_outcomes() {
 	}
 
 	// The last operation error is always available, whatever the cause:
-	if re := backoff.AsRetryError(err); re != nil {
+	var re *backoff.Error
+	if errors.As(err, &re) {
 		fmt.Println("last error:", re.LastErr)
 	}
 	// Output: ok

@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// Cause values reported by RetryError.Cause. Match them with errors.Is.
+// Cause values reported by Error.Cause. Match them with errors.Is.
 var (
 	// ErrPermanent is the cause when the operation returned a Permanent error.
 	ErrPermanent = errors.New("backoff: permanent error")
@@ -20,11 +20,11 @@ var (
 	ErrMaxElapsedTime = errors.New("backoff: maximum elapsed time exceeded")
 )
 
-// RetryError is the error returned by Retry for every failure. It records the
+// Error is the error returned by Retry for every failure. It records the
 // last error returned by the operation (LastErr) together with the reason
 // retrying stopped (Cause), so callers never lose either piece of information.
 //
-// Inspect it with errors.Is, errors.As, or AsRetryError:
+// Inspect it with errors.Is and errors.As:
 //
 //	result, err := backoff.Retry(ctx, op)
 //	switch {
@@ -38,13 +38,14 @@ var (
 //		// hit WithMaxTries or the backoff policy stopped
 //	}
 //
-//	if re := backoff.AsRetryError(err); re != nil {
+//	var re *backoff.Error
+//	if errors.As(err, &re) {
 //		log.Printf("gave up after last error: %v", re.LastErr)
 //	}
 //
-// Because RetryError implements Unwrap() []error, errors.Unwrap (the single
-// error form) returns nil for it; use errors.Is, errors.As, or AsRetryError.
-type RetryError struct {
+// Because Error implements Unwrap() []error, errors.Unwrap (the single
+// error form) returns nil for it; use errors.Is or errors.As.
+type Error struct {
 	// LastErr is the error returned by the final operation attempt. For a
 	// permanent failure it is the error passed to Permanent.
 	LastErr error
@@ -54,33 +55,25 @@ type RetryError struct {
 }
 
 // Error returns a single-line representation of the cause and last error.
-func (e *RetryError) Error() string {
+func (e *Error) Error() string {
 	return fmt.Sprintf("%s (last error: %s)", e.Cause, e.LastErr)
 }
 
 // Unwrap returns the cause and the last operation error so both can be
 // matched with errors.Is and errors.As.
-func (e *RetryError) Unwrap() []error {
+func (e *Error) Unwrap() []error {
 	return []error{e.Cause, e.LastErr}
-}
-
-// AsRetryError returns the *RetryError in err's chain, or nil if there is none
-// (including when err is nil). It is a convenience wrapper around errors.As.
-func AsRetryError(err error) *RetryError {
-	var re *RetryError
-	errors.As(err, &re)
-	return re
 }
 
 // permanent marks an operation error as non-retriable. It is an internal
 // transport produced by Permanent and consumed by Retry, which converts it
-// into a RetryError with Cause ErrPermanent. It is never returned to callers.
+// into an Error with Cause ErrPermanent. It is never returned to callers.
 type permanent struct {
 	err error
 }
 
 // Permanent wraps err to signal that Retry should stop immediately instead of
-// retrying. Retry then returns a *RetryError with Cause ErrPermanent and
+// retrying. Retry then returns an *Error with Cause ErrPermanent and
 // LastErr set to err. Permanent(nil) returns nil.
 func Permanent(err error) error {
 	if err == nil {
@@ -96,7 +89,7 @@ func (e *permanent) Error() string { return e.err.Error() }
 func (e *permanent) Unwrap() error { return e.err }
 
 // Is reports a match against ErrPermanent so a Permanent error can be detected
-// with errors.Is even before Retry converts it into a RetryError.
+// with errors.Is even before Retry converts it into an Error.
 func (e *permanent) Is(target error) bool { return target == ErrPermanent }
 
 // RetryAfterError signals that the operation should be retried after the given
@@ -107,7 +100,7 @@ func (e *permanent) Is(target error) bool { return target == ErrPermanent }
 // The error that triggered the wait (passed to RetryAfter) is available via
 // Unwrap, so errors.Is and errors.As see through the RetryAfterError. If
 // retrying later stops because a limit is reached or the context ends, Retry
-// reports that error as RetryError.LastErr instead of the RetryAfterError
+// reports that error as Error.LastErr instead of the RetryAfterError
 // itself, so the underlying cause is not lost.
 type RetryAfterError struct {
 	Duration time.Duration
@@ -116,7 +109,7 @@ type RetryAfterError struct {
 
 // RetryAfter returns a RetryAfterError that tells Retry to wait the given
 // duration before the next attempt. cause is the error that triggered the
-// wait; it is preserved as RetryError.LastErr if retrying stops. Pass a non-nil
+// wait; it is preserved as Error.LastErr if retrying stops. Pass a non-nil
 // cause so the failure reason is not lost; nil is allowed but discouraged.
 func RetryAfter(d time.Duration, cause error) error {
 	return &RetryAfterError{
